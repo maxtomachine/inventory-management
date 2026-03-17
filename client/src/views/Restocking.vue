@@ -314,7 +314,7 @@ export default {
 .budget-value {
   font-size: 2.5rem;
   font-weight: 700;
-  color: #0f172a;
+  color: var(--text-primary);
   letter-spacing: -0.04em;
   font-variant-numeric: tabular-nums;
 }
@@ -329,7 +329,7 @@ export default {
   height: 6px;
   appearance: none;
   -webkit-appearance: none;
-  background: #e2e8f0;
+  background: var(--border-primary);
   border-radius: 3px;
   outline: none;
   cursor: pointer;
@@ -369,7 +369,7 @@ export default {
   justify-content: space-between;
   margin-top: 0.5rem;
   font-size: 0.813rem;
-  color: #64748b;
+  color: var(--text-muted);
   font-weight: 500;
 }
 
@@ -378,12 +378,12 @@ export default {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  background: #d1fae5;
-  border: 1px solid #6ee7b7;
+  background: var(--badge-success-bg);
+  border: 1px solid var(--badge-success-color);
   border-radius: 8px;
   padding: 0.875rem 1.25rem;
   margin-bottom: 1.25rem;
-  color: #065f46;
+  color: var(--badge-success-color);
 }
 
 .success-content {
@@ -403,7 +403,7 @@ export default {
   background: none;
   border: none;
   cursor: pointer;
-  color: #065f46;
+  color: var(--badge-success-color);
   font-size: 1.375rem;
   line-height: 1;
   padding: 0 0.25rem;
@@ -419,7 +419,7 @@ export default {
 .empty-state {
   text-align: center;
   padding: 3rem;
-  color: #64748b;
+  color: var(--text-muted);
   font-size: 0.938rem;
 }
 
@@ -448,20 +448,30 @@ export default {
 .sku-cell {
   font-family: 'SF Mono', 'Fira Code', monospace;
   font-size: 0.813rem;
-  color: #64748b;
+  color: var(--text-muted);
 }
 
 .line-total {
   font-weight: 600;
-  color: #0f172a;
+  color: var(--text-primary);
 }
 
+/* Selected row uses a blue-tinted version of the secondary bg in light mode,
+   and a slightly lighter version of bg-tertiary in dark mode */
 .row-selected {
   background: #f0f7ff;
 }
 
+[data-theme="dark"] .row-selected {
+  background: #1e3a5f;
+}
+
 .row-selected:hover {
   background: #e8f1ff;
+}
+
+[data-theme="dark"] .row-selected:hover {
+  background: #1a3558;
 }
 
 /* Summary Bar */
@@ -472,8 +482,8 @@ export default {
   gap: 1.5rem;
   padding: 1rem 1.25rem;
   margin: 0 -1.25rem -1.25rem;
-  border-top: 1px solid #e2e8f0;
-  background: #f8fafc;
+  border-top: 1px solid var(--border-primary);
+  background: var(--bg-primary);
   border-radius: 0 0 10px 10px;
 }
 
@@ -493,7 +503,7 @@ export default {
 .summary-label {
   font-size: 0.75rem;
   font-weight: 600;
-  color: #64748b;
+  color: var(--text-muted);
   text-transform: uppercase;
   letter-spacing: 0.05em;
 }
@@ -501,7 +511,7 @@ export default {
 .summary-value {
   font-size: 1.125rem;
   font-weight: 700;
-  color: #0f172a;
+  color: var(--text-primary);
   font-variant-numeric: tabular-nums;
 }
 
@@ -516,7 +526,7 @@ export default {
 .summary-divider {
   width: 1px;
   height: 36px;
-  background: #e2e8f0;
+  background: var(--border-primary);
   flex-shrink: 0;
 }
 
