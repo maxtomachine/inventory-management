@@ -72,3 +72,5 @@ npm install && npm run dev
 - Status: green/blue/yellow/red
 - Charts: Custom SVG, CSS Grid for layouts
 - No emojis in UI
+
+# Always document non-obvious logic changes with comments

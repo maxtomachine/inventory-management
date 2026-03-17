@@ -1,8 +1,10 @@
+from datetime import datetime, timedelta
+
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from typing import List, Optional
 from pydantic import BaseModel
-from mock_data import inventory_items, orders, demand_forecasts, backlog_items, spending_summary, monthly_spending, category_spending, recent_transactions, purchase_orders
+from mock_data import inventory_items, orders, demand_forecasts, backlog_items, spending_summary, monthly_spending, category_spending, recent_transactions, purchase_orders, submitted_orders
 
 app = FastAPI(title="Factory Inventory Management System")
 
@@ -80,6 +82,8 @@ class Order(BaseModel):
     actual_delivery: Optional[str] = None
     warehouse: Optional[str] = None
     category: Optional[str] = None
+    source: Optional[str] = None
+    lead_time_days: Optional[int] = None
 
 class DemandForecast(BaseModel):
     id: str
@@ -120,6 +124,26 @@ class CreatePurchaseOrderRequest(BaseModel):
     expected_delivery_date: str
     notes: Optional[str] = None
 
+class RestockRecommendation(BaseModel):
+    item_sku: str
+    item_name: str
+    current_demand: int
+    forecasted_demand: int
+    trend: str
+    demand_gap: int
+    unit_cost: float
+    recommended_qty: int
+    line_total: float
+
+class RestockOrderItem(BaseModel):
+    item_sku: str
+    item_name: str
+    quantity: int
+    unit_cost: float
+
+class RestockOrderRequest(BaseModel):
+    items: List[RestockOrderItem]
+
 # API endpoints
 @app.get("/")
 def root():
@@ -148,10 +172,11 @@ def get_orders(
     status: Optional[str] = None,
     month: Optional[str] = None
 ):
-    """Get all orders with optional filtering"""
+    """Get all orders with optional filtering, including submitted restocking orders"""
     filtered_orders = apply_filters(orders, warehouse, category, status)
     filtered_orders = filter_by_month(filtered_orders, month)
-    return filtered_orders
+    all_orders = filtered_orders + submitted_orders
+    return all_orders
 
 @app.get("/api/orders/{order_id}", response_model=Order)
 def get_order(order_id: str):
@@ -303,6 +328,122 @@ def get_monthly_trends():
     result = list(months.values())
     result.sort(key=lambda x: x['month'])
     return result
+
+# --- Restocking endpoints ---
+
+# Pre-compute unit costs from order history for demand forecast SKUs
+_sku_prices: dict[str, float] = {}
+for _order in orders:
+    for _item in _order.get("items", []):
+        _sku = _item.get("sku", "")
+        _price = _item.get("unit_price", 0)
+        if _sku and _price:
+            _sku_prices.setdefault(_sku, []).append(_price)  # type: ignore[arg-type]
+SKU_AVG_PRICES: dict[str, float] = {
+    sku: round(sum(prices) / len(prices), 2)
+    for sku, prices in _sku_prices.items()
+}
+
+# Fallback costs for demand forecast SKUs not found in orders
+FORECAST_UNIT_COSTS: dict[str, float] = {
+    "WDG-001": 45.00,
+    "BRG-102": 32.50,
+    "GSK-203": 18.75,
+    "MTR-304": 275.00,
+    "FLT-405": 12.50,
+    "VLV-506": 89.00,
+    "SNR-420": 65.00,
+    "CTL-330": 120.00,
+}
+
+TREND_PRIORITY = {"increasing": 0, "stable": 1, "decreasing": 2}
+
+
+def _get_unit_cost(sku: str) -> float:
+    return SKU_AVG_PRICES.get(sku, FORECAST_UNIT_COSTS.get(sku, 50.00))
+
+
+@app.get("/api/restocking/recommendations", response_model=List[RestockRecommendation])
+def get_restocking_recommendations(budget: float = 25000):
+    """Get restocking recommendations based on demand forecasts and available budget"""
+    items_with_gap = []
+    for forecast in demand_forecasts:
+        demand_gap = forecast["forecasted_demand"] - forecast["current_demand"]
+        if demand_gap <= 0:
+            continue
+        unit_cost = _get_unit_cost(forecast["item_sku"])
+        items_with_gap.append({
+            "item_sku": forecast["item_sku"],
+            "item_name": forecast["item_name"],
+            "current_demand": forecast["current_demand"],
+            "forecasted_demand": forecast["forecasted_demand"],
+            "trend": forecast["trend"],
+            "demand_gap": demand_gap,
+            "unit_cost": unit_cost,
+        })
+
+    items_with_gap.sort(key=lambda x: (TREND_PRIORITY.get(x["trend"], 1), -x["demand_gap"]))
+
+    recommendations = []
+    remaining_budget = budget
+    for item in items_with_gap:
+        if remaining_budget <= 0:
+            break
+        max_qty = int(remaining_budget / item["unit_cost"])
+        qty = min(item["demand_gap"], max_qty)
+        if qty <= 0:
+            continue
+        line_total = round(qty * item["unit_cost"], 2)
+        recommendations.append({
+            **item,
+            "recommended_qty": qty,
+            "line_total": line_total,
+        })
+        remaining_budget -= line_total
+
+    return recommendations
+
+
+@app.post("/api/restocking/order")
+def submit_restocking_order(request: RestockOrderRequest):
+    """Submit a restocking order from selected recommendations"""
+    if not request.items:
+        raise HTTPException(status_code=400, detail="No items provided")
+
+    order_num = len(submitted_orders) + 1
+    now = datetime.now()
+    expected_delivery = now + timedelta(days=14)
+
+    order = {
+        "id": f"rst-{order_num}",
+        "order_number": f"RST-2026-{order_num:04d}",
+        "customer": "Internal Restocking",
+        "items": [
+            {
+                "sku": item.item_sku,
+                "name": item.item_name,
+                "quantity": item.quantity,
+                "unit_price": item.unit_cost,
+            }
+            for item in request.items
+        ],
+        "status": "Processing",
+        "order_date": now.strftime("%Y-%m-%dT%H:%M:%S"),
+        "expected_delivery": expected_delivery.strftime("%Y-%m-%dT%H:%M:%S"),
+        "total_value": round(sum(i.quantity * i.unit_cost for i in request.items), 2),
+        "source": "restocking",
+        "lead_time_days": 14,
+    }
+
+    submitted_orders.append(order)
+    return order
+
+
+@app.get("/api/restocking/orders")
+def get_restocking_orders():
+    """Get all submitted restocking orders"""
+    return submitted_orders
+
 
 if __name__ == "__main__":
     import uvicorn
